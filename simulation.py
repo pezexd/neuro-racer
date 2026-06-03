@@ -73,6 +73,14 @@ class Simulation:
         # Control de Estados
         self.estado = "PANTALLA_PRESENTACION"
         self.mostrar_instrucciones = False
+        self.opciones_menu = [
+            "INICIAR_SIMULACION",
+            "CARGAR_MODELO_GUARDADO" if os.path.exists("mejor_modelo.pickle") else "CARGAR_MODELO_(NO_EXISTE)",
+            "BORRAR_MODELO_GUARDADO" if os.path.exists("mejor_modelo.pickle") else "BORRAR_MODELO_(NO_EXISTE)",
+            "INSTRUCCIONES_DEL_SISTEMA",
+            "SALIR"
+        ]
+        self.menu_index = 0  # Comienza apuntando a la primera opción
 
         # Parámetros de control de la simulación
         self.generation = 1
@@ -149,32 +157,32 @@ class Simulation:
     def draw_menu(self):
         self.screen.fill(COLOR_BG)
 
-        if self.img_menu:
-            self.screen.blit(self.img_menu, (0, 0))
-
-        # Título
-        lbl_title = FONT_TITLE.render("MENU PRINCIPAL", True, COLOR_RAY)
-        self.screen.blit(lbl_title, (SCREEN_WIDTH//2 - lbl_title.get_width()//2, 80))
+        if self.img_presentacion:
+            self.screen.blit(self.img_presentacion, (0, 0))
 
         existe_modelo = os.path.exists("mejor_modelo.pickle")
 
-        opciones = [
-            "[1] Iniciar Nueva Población (Desde cero)",
-            "[2] Cargar Mejor Modelo Guardado" if existe_modelo else "[2] Cargar Modelo (No existe archivo)",
-            "[3] Borrar Modelo Guardado" if existe_modelo else "[3] Borrar Modelo (No existe archivo)",
-            "[4] Instrucciones del Sistema",
-            "[ESC] Salir"
-        ]
+        for i, opcion in enumerate(self.opciones_menu):
+            # Formatear el texto para que sea amigable a la vista
+            texto_bonito = opcion.replace("_", " ").title()
 
-        for i, opcion in enumerate(opciones):
-            color = COLOR_TEXT
+            # --- EFECTO DE RESALTE ---
+            # Si el índice actual es el seleccionado por las flechas, cambia de color
+            if i == self.menu_index:
+                color_texto = (255, 215, 0) # Dorado / Oro Neón
+                texto_bonito = f"> {texto_bonito} <" # Añade indicadores visuales
+            else:
+                color_texto = (200, 200, 200) # Gris estándar pasivo
+
             if (i == 1 or i == 2) and not existe_modelo:
-                color = (100, 100, 110) # Gris oscuro si está deshabilitado
+                color_texto = (100, 100, 110) # Gris oscuro para opciones no disponibles
 
-            lbl_opc = FONT_MENU.render(opcion, True, color)
-            self.screen.blit(lbl_opc, (SCREEN_WIDTH//2 - lbl_opc.get_width()//2, 220 + i * 50))
+            # Renderizar y dibujar en la pantalla (ajusta el espaciado en Y)
+            text_surface = FONT_MENU.render(texto_bonito, True, color_texto)
+            rect_texto = text_surface.get_rect(center=(SCREEN_WIDTH // 2, 360 + (i * 60)))
+            self.screen.blit(text_surface, rect_texto)
 
-         # Cuadro de instrucciones flotante
+        # Cuadro de instrucciones flotante
         if self.mostrar_instrucciones:
             pygame.draw.rect(self.screen, (10, 10, 15), (60, 480, 1100, 240), 0, 12)
             pygame.draw.rect(self.screen, COLOR_RAY, (60, 480, 1100, 240), 2, 12)
@@ -199,15 +207,22 @@ class Simulation:
         self.screen.blit(lbl_title, (SCREEN_WIDTH//2 - lbl_title.get_width()//2, 150))
 
         pistas = [
-            "[1] " + TRACK_OVALO["nombre"],
-            "[2] " + TRACK_S["nombre"],
-            "[3] " + TRACK_CHICANA["nombre"],
-            "[ESC] Volver atrás"
+            TRACK_OVALO["nombre"],
+            TRACK_S["nombre"],
+            TRACK_CHICANA["nombre"],
+            "VOLVER"
         ]
 
         for i, pista in enumerate(pistas):
-            lbl_p = FONT_MENU.render(pista, True, COLOR_TEXT)
-            self.screen.blit(lbl_p, (350, 300 + i * 60))
+            if i == self.menu_index:
+                pista = f"> {pista} <"
+                color = (255, 215, 0)
+            else:
+                color = (200, 200, 200)
+
+            text_surface = FONT_MENU.render(pista, True, color)
+            rect_texto = text_surface.get_rect(center=(SCREEN_WIDTH // 2, 300 + (i * 60)))
+            self.screen.blit(text_surface, rect_texto)
 
     def draw_track(self, leader_car):
         # Capa de asfalto
@@ -412,33 +427,58 @@ class Simulation:
                     elif self.estado == "MENU_PRINCIPAL":
                         if event.key == pygame.K_ESCAPE:
                             running = False
-                        elif event.key == pygame.K_1:
-                            self.usar_guardado_temp = False
-                            self.estado = "MENU_PISTAS"
-                        elif event.key == pygame.K_2 and os.path.exists("mejor_modelo.pickle"):
-                            self.usar_guardado_temp = True
-                            self.estado = "MENU_PISTAS"
-                        elif event.key == pygame.K_3 and os.path.exists("mejor_modelo.pickle"):
-                            try:
-                                os.remove("mejor_modelo.pickle")
-                                print("Archivo de guardado eliminado.")
-                            except Exception: pass
-                        elif event.key == pygame.K_4:
-                            self.mostrar_instrucciones = not self.mostrar_instrucciones
+                        elif event.key == pygame.K_DOWN:
+                            self.menu_index = (self.menu_index + 1) % len(self.opciones_menu)
+                            if self.sonido_enter: self.sonido_enter.play() # Feedback sonoro corto
+                        elif event.key == pygame.K_UP:
+                            self.menu_index = (self.menu_index - 1) % len(self.opciones_menu)
+                            if self.sonido_enter: self.sonido_enter.play()
+
+                        elif event.key == pygame.K_RETURN:
+                            if self.menu_index == 0 and self.sonido_enter:
+                                self.sonido_enter.play()
+                                self.usar_guardado_temp = False
+                                self.estado = "MENU_PISTAS"
+                            elif self.menu_index == 1 and os.path.exists("mejor_modelo.pickle") and self.sonido_enter:
+                                self.sonido_enter.play()
+                                self.usar_guardado_temp = True
+                                self.estado = "MENU_PISTAS"
+                            elif self.menu_index == 2 and os.path.exists("mejor_modelo.pickle"):
+                                try:
+                                    os.remove("mejor_modelo.pickle")
+                                    print("Archivo de guardado eliminado.")
+                                    if self.sonido_enter: self.sonido_enter.play()
+                                except Exception: pass
+                            elif self.menu_index == 3:
+                                self.mostrar_instrucciones = not self.mostrar_instrucciones
+                                if self.sonido_enter: self.sonido_enter.play()
+                            elif self.menu_index == 4:
+                                if self.sonido_enter: self.sonido_enter.play()
+                                running = False
 
                     elif self.estado == "MENU_PISTAS":
                         if event.key == pygame.K_ESCAPE:
-                            pygame.mixer.music.play(-1)
                             self.estado = "MENU_PRINCIPAL"
-                        elif event.key == pygame.K_1:
-                            self.pista_activa = TRACK_OVALO
-                            self.iniciar_simulacion(self.usar_guardado_temp)
-                        elif event.key == pygame.K_2:
-                            self.pista_activa = TRACK_S
-                            self.iniciar_simulacion(self.usar_guardado_temp)
-                        elif event.key == pygame.K_3:
-                            self.pista_activa = TRACK_CHICANA
-                            self.iniciar_simulacion(self.usar_guardado_temp)
+                        elif event.key == pygame.K_DOWN:
+                            self.menu_index = (self.menu_index + 1) % 4
+                            self.draw_menu_pistas()
+                            if self.sonido_enter: self.sonido_enter.play()
+                        elif event.key == pygame.K_UP:
+                            self.menu_index = (self.menu_index - 1) % 4
+                            self.draw_menu_pistas()
+                            if self.sonido_enter: self.sonido_enter.play()
+                        elif event.key == pygame.K_RETURN:
+                            if self.menu_index == 0:
+                                self.pista_activa = TRACK_OVALO
+                                self.iniciar_simulacion(self.usar_guardado_temp)
+                            elif self.menu_index == 1:
+                                self.pista_activa = TRACK_S
+                                self.iniciar_simulacion(self.usar_guardado_temp)
+                            elif self.menu_index == 2:
+                                self.pista_activa = TRACK_CHICANA
+                                self.iniciar_simulacion(self.usar_guardado_temp)
+                            elif self.menu_index == 3:
+                                self.estado = "MENU_PRINCIPAL"
 
                     elif self.estado == "SIMULACION":
                         if event.key == pygame.K_ESCAPE:
