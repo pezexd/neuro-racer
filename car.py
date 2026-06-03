@@ -81,10 +81,19 @@ class Car:
         # 2. Pensar: La Red Neuronal toma las decisiones de conducción
         ai_decision = self.brain.predict(self.sensor_inputs)
 
+        # --- FÍSICA PROGRESIVA DE VELOCIDAD (Aceleración y Frenado) ---
+        # ai_decision[0] ahora controlará de forma gradual el motor.
+        # Si es mayor a 0: Acelera. Si es menor o igual a 0: Desacelera/Frena.
         if ai_decision[0] > 0:
-            self.speed = 4.0
+            self.speed += 0.2  # Incrementa la velocidad poco a poco (Aceleración)
         else:
-            self.speed = 1.5
+            self.speed -= 0.3  # Disminuye la velocidad más rápido de lo que acelera (Frenado)
+
+        MAX_SPEED = 8.0  # El nuevo tope de velocidad (¡Mucho más rápido que 4.0!)
+        MIN_SPEED = 2.0  # Velocidad mínima para que NUNCA se queden completamente parados
+
+        if self.speed > MAX_SPEED: self.speed = MAX_SPEED
+        if self.speed < MIN_SPEED: self.speed = MIN_SPEED
 
         if ai_decision[1] > 0.2:
             self.angle += 4.5
@@ -99,8 +108,9 @@ class Car:
         self.distance_traveled += self.speed
         self.time_alive += 1
 
-        # Calcular fitness base temporalmente como la distancia recorrida más un pequeño bono por tiempo vivo
-        self.fitness = self.distance_traveled + (self.speed * 2)
+        # Al multiplicar la distancia por la velocidad actual, un auto que cruza
+        # las rectas a máxima velocidad ganará muchísimo más fitness que uno lento.
+        self.fitness = self.distance_traveled * (1.0 + (self.speed / MAX_SPEED))
 
         # Validaciones de Checkpoints y Colisiones
         meta_alcanzada = self.check_checkpoints(checkpoints)
@@ -170,13 +180,13 @@ class Car:
                 # o el fondo exterior (COLOR_BG), el carro se elimina ipso facto.
                 if is_wall or is_bg:
                     self.is_alive = False
-                    # self.fitness *= 0.40    # Mantener castigo estricto para la IA
+                    self.fitness *= 0.40    # Mantener castigo estricto para la IA
                     self.radars.clear()     # Limpiar sensores para que no floten en el aire
                     break
             else:
                 # Si el carro se sale completamente de la pantalla, también muere
                 self.is_alive = False
-                # self.fitness *= 0.40    # Mantener castigo estricto para la IA
+                self.fitness *= 0.40    # Mantener castigo estricto para la IA
                 self.radars.clear()     # Limpiar sensores para que no floten en el aire
                 break
 
