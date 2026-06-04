@@ -77,6 +77,7 @@ class Simulation:
             "INICIAR_SIMULACION",
             "CARGAR_MODELO_GUARDADO" if os.path.exists("mejor_modelo.pickle") else "CARGAR_MODELO_(NO_EXISTE)",
             "BORRAR_MODELO_GUARDADO" if os.path.exists("mejor_modelo.pickle") else "BORRAR_MODELO_(NO_EXISTE)",
+            "MODO_HUMANO",
             "INSTRUCCIONES_DEL_SISTEMA",
             "SALIR"
         ]
@@ -115,7 +116,7 @@ class Simulation:
                 return False
         return False
 
-    def iniciar_simulacion(self, usar_guardado):
+    def iniciar_simulacion(self, usar_guardado, modo_humano=False):
         pygame.mixer.music.stop()
         try:
             pygame.mixer.music.load(self.musica_carrera)
@@ -125,7 +126,9 @@ class Simulation:
             print(f"Advertencia: No se pudo cargar la música de carrera: {self.musica_carrera}")
 
         self.generation = 1
-        if usar_guardado:
+        self.modo_humano_activo = modo_humano
+
+        if usar_guardado and not self.modo_humano_activo:
             self.cargar_modelo()
         else:
             self.best_brain_historical = None
@@ -134,13 +137,17 @@ class Simulation:
         self.track_points = self.pista_activa["points"]
         self.population = []
 
-        for _ in range(POPOULATION_SIZE):
-             # Si tenemos un cerebro guardado del pasado, lo usamos de base para toda la población inicial
-            brain = self.best_brain_historical.mutate() if self.best_brain_historical else None
-            self.population.append(Car(brain, spawn_info=self.pista_activa["spawn"]))
+        if self.modo_humano_activo:
+            carro_humano = Car(brain=None, spawn_info=self.pista_activa["spawn"])
+            carro_humano.is_human = True
+            self.population.append(carro_humano)
+        else:
+            for _ in range(POPOULATION_SIZE):
+                # Si tenemos un cerebro guardado del pasado, lo usamos de base para toda la población inicial
+                brain = self.best_brain_historical.mutate() if self.best_brain_historical else None
+                self.population.append(Car(brain, spawn_info=self.pista_activa["spawn"]))
 
         self.estado = "SIMULACION"
-
         self.en_conteo = True
         self.conteo_inicio_tiempo = pygame.time.get_ticks()
 
@@ -184,22 +191,24 @@ class Simulation:
 
         # Cuadro de instrucciones flotante
         if self.mostrar_instrucciones:
-            pygame.draw.rect(self.screen, (10, 10, 15), (60, 480, 1100, 240), 0, 12)
-            pygame.draw.rect(self.screen, COLOR_RAY, (60, 480, 1100, 240), 2, 12)
+            pygame.draw.rect(self.screen, (10, 10, 15), (60, 420, 1100, 290), 0, 12)
+            pygame.draw.rect(self.screen, COLOR_RAY, (60, 420, 1100, 290), 2, 12)
 
             instrucciones = [
                 "• Los vehículos se controlan de manera autónoma usando Redes Neuronales Artificiales.",
                 "• El algoritmo genético selecciona los mejores ejemplares mediante Elitismo Duro.",
+                "• Puedes jugar como humano seleccionando la opción correspondiente en el menú.",
                 "• Controles en simulación:",
                 "  [F] Alternar velocidad de entrenamiento (60 FPS / 300 FPS rápido).",
                 "  [P] Pausar o reanudar la carrera en cualquier momento.",
                 "  [G] Guardar el genoma del líder actual en el almacenamiento local.",
+                "  [A/D/IZQ/DER] Controlar el vehículo si estás en modo humano.",
                 "  [ESC] Regresar al menú de inicio."
             ]
 
             for i, inst in enumerate(instrucciones):
                 lbl_inst = FONT_UI.render(inst, True, (200, 220, 240))
-                self.screen.blit(lbl_inst, (90, 500 + i * 28))
+                self.screen.blit(lbl_inst, (90, 440 + i * 28))
 
     def draw_menu_pistas(self):
         self.screen.fill(COLOR_BG)
@@ -298,6 +307,21 @@ class Simulation:
 
     def next_generation(self):
         """Aplica la función de Selección Artificial para avanzar la población"""
+
+        # Si estamos en modo humano, no hacemos selección ni cruce, simplemente reiniciamos el mismo carro para que el jugador pueda intentarlo de nuevo
+        if self.modo_humano_activo:
+            self.track_points = self.pista_activa["points"]
+            self.population = []
+
+            carro_humano = Car(brain=None, spawn_info=self.pista_activa["spawn"])
+            carro_humano.is_human = True
+            self.population.append(carro_humano)
+
+            self.en_conteo = True
+            self.conteo_inicio_tiempo = pygame.time.get_ticks()
+
+            return
+
         # Ordenar por mejores puntuaciones (Función de Selección)
         self.population.sort(key=lambda car: car.fitness, reverse=True)
         best_car = self.population[0]
@@ -340,33 +364,50 @@ class Simulation:
 
     def draw_ui(self):
          # Renderizar datos en tiempo real en la pantalla
-        text_gen = f"Generación Actual: {self.generation}"
-        text_hist = f"Récord Histórico: {int(self.best_historical_fitness)} pts"
+        if self.modo_humano_activo:
+            text_modo = "MODO: Conducción Manual"
+            surface_modo = FONT_UI.render(text_modo, True, COLOR_GOLD)
 
-        alive_count = sum(1 for c in self.population if c.is_alive)
-        text_alive = f"Agentes Vivos: {alive_count} / {POPOULATION_SIZE}"
+            text_record = f"Récord Histórico: {int(self.best_historical_fitness)} pts"
+            surface_record = FONT_UI.render(text_record, True, (255, 215, 0))
 
-        text_pista = f"Pista: {self.pista_activa['nombre']}"
+            pygame.draw.rect(self.screen, (5, 5, 10), (750, 20, 430, 70), 0, 8)
+            pygame.draw.rect(self.screen, COLOR_TRACK, (750, 20, 430, 70), 2, 8)
 
-         # Mensajes informativos de controles de simulación
-        mode_str = f"VEL: {self.simulation_speed} FPS (F) | PAUSA: {self.is_paused} (P) | MENU: (ESC)"
+            self.screen.blit(surface_modo, (760, 30))
+            self.screen.blit(surface_record, (760, 60))
 
-        surface_gen = FONT_UI.render(text_gen, True, COLOR_TEXT)
-        surface_hist = FONT_UI.render(text_hist, True, (255, 215, 0))
-        surface_alive = FONT_UI.render(text_alive, True, COLOR_TEXT)
-        surface_pista = FONT_UI.render(text_pista, True, COLOR_RAY)
+            modo_str = f"PAUSA: {self.is_paused} (P) | MENU: (ESC)"
+            surface_modo_str = FONT_UI.render(modo_str, True, (255, 150, 0))
+            self.screen.blit(surface_modo_str, (10, 10))
+        else:
+            text_gen = f"Generación Actual: {self.generation}"
+            text_hist = f"Récord Histórico: {int(self.best_historical_fitness)} pts"
 
-        # Dibujar un pequeño panel negro transparente de fondo para el texto
-        pygame.draw.rect(self.screen, (5, 5, 10), (750, 20, 430, 130), 0, 8)
-        pygame.draw.rect(self.screen, COLOR_TRACK, (750, 20, 430, 130), 2, 8)
+            alive_count = sum(1 for c in self.population if c.is_alive)
+            text_alive = f"Agentes Vivos: {alive_count} / {POPOULATION_SIZE}"
 
-        self.screen.blit(surface_gen, (760, 30))
-        self.screen.blit(surface_hist, (760, 60))
-        self.screen.blit(surface_alive, (760, 90))
-        self.screen.blit(surface_pista, (760, 120))
+            text_pista = f"Pista: {self.pista_activa['nombre']}"
 
-        surface_mode = FONT_UI.render(mode_str, True, (255, 150, 0))
-        self.screen.blit(surface_mode, (10, 10))
+            # Mensajes informativos de controles de simulación
+            mode_str = f"VEL: {self.simulation_speed} FPS (F) | PAUSA: {self.is_paused} (P) | MENU: (ESC)"
+
+            surface_gen = FONT_UI.render(text_gen, True, COLOR_TEXT)
+            surface_hist = FONT_UI.render(text_hist, True, (255, 215, 0))
+            surface_alive = FONT_UI.render(text_alive, True, COLOR_TEXT)
+            surface_pista = FONT_UI.render(text_pista, True, COLOR_RAY)
+
+            # Dibujar un pequeño panel negro transparente de fondo para el texto
+            pygame.draw.rect(self.screen, (5, 5, 10), (750, 20, 430, 130), 0, 8)
+            pygame.draw.rect(self.screen, COLOR_TRACK, (750, 20, 430, 130), 2, 8)
+
+            self.screen.blit(surface_gen, (760, 30))
+            self.screen.blit(surface_hist, (760, 60))
+            self.screen.blit(surface_alive, (760, 90))
+            self.screen.blit(surface_pista, (760, 120))
+
+            surface_mode = FONT_UI.render(mode_str, True, (255, 150, 0))
+            self.screen.blit(surface_mode, (10, 10))
 
     def draw_countdown(self):
         # Calcular el tiempo transcurrido desde que se abrió la pista
@@ -435,25 +476,32 @@ class Simulation:
                             if self.sonido_enter: self.sonido_enter.play()
 
                         elif event.key == pygame.K_RETURN:
-                            if self.menu_index == 0 and self.sonido_enter:
-                                self.sonido_enter.play()
+                            self.modo_humano_activo = False # Por defecto, el modo humano no está activo a menos que se seleccione explícitamente
+                            opcion_elegida = self.opciones_menu[self.menu_index]
+
+                            if self.sonido_enter: self.sonido_enter.play() # Feedback sonoro al confirmar opción
+
+                            if opcion_elegida == "INICIAR_SIMULACION":
                                 self.usar_guardado_temp = False
                                 self.estado = "MENU_PISTAS"
-                            elif self.menu_index == 1 and os.path.exists("mejor_modelo.pickle") and self.sonido_enter:
-                                self.sonido_enter.play()
+                                self.menu_index = 0 # Reiniciar selección de pista al entrar a esta sección
+                            elif opcion_elegida == "CARGAR_MODELO_GUARDADO" and os.path.exists("mejor_modelo.pickle"):
                                 self.usar_guardado_temp = True
                                 self.estado = "MENU_PISTAS"
-                            elif self.menu_index == 2 and os.path.exists("mejor_modelo.pickle"):
+                                self.menu_index = 0 # Reiniciar selección de pista al entrar a esta sección
+                            elif opcion_elegida == "BORRAR_MODELO_GUARDADO" and os.path.exists("mejor_modelo.pickle"):
                                 try:
                                     os.remove("mejor_modelo.pickle")
                                     print("Archivo de guardado eliminado.")
-                                    if self.sonido_enter: self.sonido_enter.play()
                                 except Exception: pass
-                            elif self.menu_index == 3:
+                            elif opcion_elegida == "MODO_HUMANO":
+                                self.usar_guardado_temp = False
+                                self.modo_humano_activo = True
+                                self.estado = "MENU_PISTAS"
+                                self.menu_index = 0 # Reiniciar selección de pista al entrar a esta sección
+                            elif opcion_elegida == "INSTRUCCIONES_DEL_SISTEMA":
                                 self.mostrar_instrucciones = not self.mostrar_instrucciones
-                                if self.sonido_enter: self.sonido_enter.play()
-                            elif self.menu_index == 4:
-                                if self.sonido_enter: self.sonido_enter.play()
+                            elif opcion_elegida == "SALIR":
                                 running = False
 
                     elif self.estado == "MENU_PISTAS":
@@ -470,15 +518,16 @@ class Simulation:
                         elif event.key == pygame.K_RETURN:
                             if self.menu_index == 0:
                                 self.pista_activa = TRACK_OVALO
-                                self.iniciar_simulacion(self.usar_guardado_temp)
+                                self.iniciar_simulacion(self.usar_guardado_temp, modo_humano=self.modo_humano_activo)
                             elif self.menu_index == 1:
                                 self.pista_activa = TRACK_S
-                                self.iniciar_simulacion(self.usar_guardado_temp)
+                                self.iniciar_simulacion(self.usar_guardado_temp, modo_humano=self.modo_humano_activo)
                             elif self.menu_index == 2:
                                 self.pista_activa = TRACK_CHICANA
-                                self.iniciar_simulacion(self.usar_guardado_temp)
+                                self.iniciar_simulacion(self.usar_guardado_temp, modo_humano=self.modo_humano_activo)
                             elif self.menu_index == 3:
                                 self.estado = "MENU_PRINCIPAL"
+                                self.menu_index = 0 # Reiniciar selección del menú principal al volver
 
                     elif self.estado == "SIMULACION":
                         if event.key == pygame.K_ESCAPE:

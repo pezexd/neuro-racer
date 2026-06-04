@@ -15,6 +15,7 @@ class Car:
             self.angle = 180
 
         self.speed = 0
+        self.is_human = False  # Bandera para identificar si este carro es controlado por el jugador
 
         # Dimensiones del vehículo
         self.width = 64
@@ -71,6 +72,9 @@ class Car:
         if not self.is_alive:
             return False
 
+        MAX_SPEED = 8.0  # Tope de velocidad
+        MIN_SPEED = 2.0  # Velocidad mínima para que NUNCA se queden completamente parados
+
         # 1. Obtener lecturas de radares y normalizarlas (0.0 a 1.0)
         self.radars.clear()
         angles = [-90, -45, 0, 45, 90]
@@ -78,27 +82,37 @@ class Car:
             dist = self.cast_rays(phi, screen)
             self.sensor_inputs[i] = dist / 250.0    # Normalizado basado en rango máximo
 
-        # 2. Pensar: La Red Neuronal toma las decisiones de conducción
-        ai_decision = self.brain.predict(self.sensor_inputs)
+        # --- SEPARACIÓN DE CONTROL: IA VS HUMANO ---
+        if self.is_human:
+            # CONTROL MANUAL POR TECLADO
+            self.speed = 3 # Velocidad constante para el modo humano, para que sea más fácil de controlar
 
-        # --- FÍSICA PROGRESIVA DE VELOCIDAD (Aceleración y Frenado) ---
-        # ai_decision[0] ahora controlará de forma gradual el motor.
-        # Si es mayor a 0: Acelera. Si es menor o igual a 0: Desacelera/Frena.
-        if ai_decision[0] > 0:
-            self.speed += 0.2  # Incrementa la velocidad poco a poco (Aceleración)
+            keys = pygame.key.get_pressed()
+
+            # Giro manual
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                self.angle -= 4.5
+            elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                self.angle += 4.5
         else:
-            self.speed -= 0.3  # Disminuye la velocidad más rápido de lo que acelera (Frenado)
+            # CONTROL POR RED NEURONAL
+            ai_decision = self.brain.predict(self.sensor_inputs)
 
-        MAX_SPEED = 8.0  # El nuevo tope de velocidad (¡Mucho más rápido que 4.0!)
-        MIN_SPEED = 2.0  # Velocidad mínima para que NUNCA se queden completamente parados
+            # --- FÍSICA PROGRESIVA DE VELOCIDAD (Aceleración y Frenado) ---
+            # ai_decision[0] ahora controlará de forma gradual el motor.
+            # Si es mayor a 0: Acelera. Si es menor o igual a 0: Desacelera/Frena.
+            if ai_decision[0] > 0:
+                self.speed += 0.2  # Incrementa la velocidad poco a poco (Aceleración)
+            else:
+                self.speed -= 0.3  # Disminuye la velocidad más rápido de lo que acelera (Frenado)
 
-        if self.speed > MAX_SPEED: self.speed = MAX_SPEED
-        if self.speed < MIN_SPEED: self.speed = MIN_SPEED
+            if self.speed > MAX_SPEED: self.speed = MAX_SPEED
+            if self.speed < MIN_SPEED: self.speed = MIN_SPEED
 
-        if ai_decision[1] > 0.2:
-            self.angle += 4.5
-        elif ai_decision[1] < -0.2:
-            self.angle -= 4.5
+            if ai_decision[1] > 0.2:
+                self.angle += 4.5
+            elif ai_decision[1] < -0.2:
+                self.angle -= 4.5
 
         # 3. Aplicar física de desplazamiento
         self.x += math.cos(math.radians(self.angle)) * self.speed
